@@ -1,4 +1,4 @@
-name: Space9 | Backend | Development
+name: Backend CI/CD (Development)
 
 on:
   workflow_dispatch:
@@ -12,15 +12,17 @@ permissions:
   contents: read
 
 jobs:
+  build-and-push:
 
-  build:
-
-    name: Build & Push Docker Image
+    name: Build & Push Backend Image
 
     runs-on: ubuntu-latest
 
     environment:
       name: Development
+
+    env:
+      ECR_REPOSITORY: backend-rahulinfotech
 
     steps:
 
@@ -37,10 +39,17 @@ jobs:
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v5
-
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: github-actions-backend
+
+      ############################################################
+      # Verify AWS Login
+      ############################################################
+
+      - name: Verify AWS Identity
+        run: aws sts get-caller-identity
 
       ############################################################
       # Login to Amazon ECR
@@ -51,23 +60,14 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       ############################################################
-      # Docker Metadata
-      ############################################################
-
-      - name: Set Image Tag
-        run: |
-          echo "IMAGE_TAG=dev-${GITHUB_SHA::7}" >> $GITHUB_ENV
-
-      ############################################################
       # Build Docker Image
       ############################################################
 
       - name: Build Docker Image
-
         run: |
-
           docker build \
-            -t ${{ vars.ECR_REPOSITORY }}:${IMAGE_TAG} \
+            -t $ECR_REPOSITORY:${{ github.sha }} \
+            -t $ECR_REPOSITORY:latest \
             .
 
       ############################################################
@@ -75,32 +75,18 @@ jobs:
       ############################################################
 
       - name: Tag Docker Image
-
         run: |
+          docker tag $ECR_REPOSITORY:${{ github.sha }} \
+          ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:${{ github.sha }}
 
-          docker tag \
-            ${{ vars.ECR_REPOSITORY }}:${IMAGE_TAG} \
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${IMAGE_TAG}
+          docker tag $ECR_REPOSITORY:latest \
+          ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:latest
 
       ############################################################
       # Push Docker Image
       ############################################################
 
       - name: Push Docker Image
-
         run: |
-
-          docker push \
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${IMAGE_TAG}
-
-      ############################################################
-      # Image Information
-      ############################################################
-
-      - name: Image Details
-
-        run: |
-
-          echo "Image Successfully Pushed"
-
-          echo "${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${IMAGE_TAG}"
+          docker push ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:${{ github.sha }}
+          docker push ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:latest
