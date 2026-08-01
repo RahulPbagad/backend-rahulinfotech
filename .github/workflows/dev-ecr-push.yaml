@@ -1,0 +1,106 @@
+name: Space9 | Backend | Development
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - dev
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+
+  build:
+
+    name: Build & Push Docker Image
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: Development
+
+    steps:
+
+      ############################################################
+      # Checkout Repository
+      ############################################################
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      ############################################################
+      # Configure AWS Credentials
+      ############################################################
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v5
+
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      ############################################################
+      # Login to Amazon ECR
+      ############################################################
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      ############################################################
+      # Docker Metadata
+      ############################################################
+
+      - name: Set Image Tag
+        run: |
+          echo "IMAGE_TAG=dev-${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      ############################################################
+      # Build Docker Image
+      ############################################################
+
+      - name: Build Docker Image
+
+        run: |
+
+          docker build \
+            -t ${{ vars.ECR_REPOSITORY }}:${IMAGE_TAG} \
+            .
+
+      ############################################################
+      # Tag Docker Image
+      ############################################################
+
+      - name: Tag Docker Image
+
+        run: |
+
+          docker tag \
+            ${{ vars.ECR_REPOSITORY }}:${IMAGE_TAG} \
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${IMAGE_TAG}
+
+      ############################################################
+      # Push Docker Image
+      ############################################################
+
+      - name: Push Docker Image
+
+        run: |
+
+          docker push \
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${IMAGE_TAG}
+
+      ############################################################
+      # Image Information
+      ############################################################
+
+      - name: Image Details
+
+        run: |
+
+          echo "Image Successfully Pushed"
+
+          echo "${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${IMAGE_TAG}"
